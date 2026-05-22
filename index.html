@@ -710,6 +710,7 @@ let DATA = [];
 let currentPeriod = "last_15d";
 let demoMode = true;
 let barChart = null, donutChart = null;
+let TOKEN_ATIVO = META_TOKEN || "";
 
 // ============================================================
 // DADOS DE DEMONSTRAÇÃO
@@ -756,14 +757,21 @@ async function fetchData() {
 
   const since = getSince();
   const until = new Date().toISOString().split('T')[0];
-  const fields = `spend,actions,cost_per_action_type,impressions`;
+  const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
+  const fields = `spend,actions,impressions`;
 
   DATA = [];
   for (const acc of ACCOUNT_IDS) {
     try {
-      const url = `https://graph.facebook.com/v19.0/act_${acc.id}/insights?fields=${fields}&time_range={"since":"${since}","until":"${until}"}&level=account&access_token=${META_TOKEN}`;
+      const url = `https://graph.facebook.com/v19.0/act_${acc.id}/insights?fields=${fields}&time_range=${timeRange}&level=account&access_token=${TOKEN_ATIVO}`;
       const r = await fetch(url);
       const json = await r.json();
+
+      if (json.error) {
+        console.error(`Erro conta ${acc.nome}:`, json.error.message);
+        throw new Error(json.error.message);
+      }
+
       const ins = json.data && json.data[0] ? json.data[0] : null;
 
       const gasto = ins ? parseFloat(ins.spend || 0) : 0;
@@ -786,6 +794,7 @@ async function fetchData() {
         status: cpl === 0 ? 'amber' : cpl < 13 ? 'green' : cpl < 17 ? 'amber' : 'red',
       });
     } catch(e) {
+      console.error(`Falha na conta ${acc.nome}:`, e);
       DATA.push({ id: acc.id, nome: acc.nome, gasto:0, leads:0, cpl:0, visitas:0, cpv:0, melhorAdset:'—', adsetLeads:0, adsetCpl:0, adsetGasto:0, status:'amber' });
     }
   }
@@ -799,7 +808,8 @@ async function fetchData() {
 
 async function fetchMelhorAdset(accId, since, until) {
   try {
-    const url = `https://graph.facebook.com/v19.0/act_${accId}/adsets?fields=name,insights.time_range({"since":"${since}","until":"${until}"}){spend,actions}&limit=30&access_token=${META_TOKEN}`;
+    const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
+    const url = `https://graph.facebook.com/v19.0/act_${accId}/adsets?fields=name,insights.time_range({"since":"${since}","until":"${until}"}){spend,actions}&limit=30&access_token=${TOKEN_ATIVO}`;
     const r = await fetch(url);
     const json = await r.json();
     let melhor = { nome: '—', leads: 0, cpl: 0, gasto: 0 };
@@ -1077,7 +1087,7 @@ function statusBadge(leads, cpl) {
 function conectarToken() {
   const token = document.getElementById('tokenInput').value.trim();
   if (!token) return;
-  window.META_TOKEN_VALUE = token;
+  TOKEN_ATIVO = token;
   demoMode = false;
   document.getElementById('tokenModal').style.display = 'none';
   document.getElementById('statusDot').classList.remove('warn');
@@ -1099,7 +1109,7 @@ window.addEventListener('load', () => {
     overlay.style.opacity = '0';
     setTimeout(() => {
       overlay.style.display = 'none';
-      if (META_TOKEN) {
+      if (TOKEN_ATIVO) {
         demoMode = false;
         document.getElementById('statusDot').classList.remove('warn');
         document.getElementById('statusText').textContent = 'API conectada';
